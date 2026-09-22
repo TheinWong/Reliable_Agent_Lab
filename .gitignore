@@ -1,0 +1,45 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+
+# Java / Maven
+target/
+*.class
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Logs and runtime artifacts
+*.log
+logs/
+artifacts/
+run-data/
+
+# Local databases / checkpoints
+*.db
+*.sqlite
+*.sqlite3
+
+# Coverage
+.coverage
+htmlcov/
+coverage.xml
+
+# Temp
+.tmp/
+tmp/

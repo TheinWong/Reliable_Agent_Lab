@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Python checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Detect Python workspace
+        id: detect
+        shell: bash
+        run: |
+          if [ -f agent/pyproject.toml ] || [ -f api/pyproject.toml ] || [ -f pyproject.toml ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-python@v5
+        if: steps.detect.outputs.enabled == 'true'
+        with:
+          python-version: '3.12'
+      - name: Bootstrap note
+        if: steps.detect.outputs.enabled != 'true'
+        run: echo "Python workspace not created yet; skipping Python checks."
+      - name: Run Python checks through Makefile
+        if: steps.detect.outputs.enabled == 'true'
+        run: make test-python
+
+  java:
+    name: Java checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Detect Java workspace
+        id: detect
+        shell: bash
+        run: |
+          if [ -f demo-service/pom.xml ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-java@v4
+        if: steps.detect.outputs.enabled == 'true'
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Bootstrap note
+        if: steps.detect.outputs.enabled != 'true'
+        run: echo "Java workspace not created yet; skipping Java checks."
+      - name: Test Java service
+        if: steps.detect.outputs.enabled == 'true'
+        working-directory: demo-service
+        run: mvn -B test
+
+  compose:
+    name: Compose validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate compose when present
+        shell: bash
+        run: |
+          if [ -f infra/docker-compose.yml ]; then
+            docker compose -f infra/docker-compose.yml config
+          else
+            echo "Compose file not created yet; skipping validation."
+          fi
