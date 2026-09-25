@@ -58,6 +58,29 @@ The Spring Boot Order Service exists to provide:
 
 It must stay intentionally small.
 
+The implemented Order Service uses feature-first packaging with API,
+application, domain, and infrastructure layers. Its order-detail read path is:
+
+```text
+HTTP API -> OrderService -> Redis order cache
+                         -> MySQL order repository on cache miss/error
+```
+
+MySQL is authoritative. Redis is a cache-aside optimization with a five-minute
+TTL. A Redis read error is logged and counted, then the request falls back to
+MySQL without attempting a cache write during that request. A cache write error
+does not turn an otherwise successful order read into an API failure.
+
+The current observable contract includes:
+
+- Actuator dependency health for MySQL and Redis;
+- structured cache read/write failure logs;
+- cache read counters tagged by `hit`, `miss`, or `error`;
+- MySQL fallback counters tagged by `cache_miss` or `cache_error`;
+- cache write counters tagged by `success`, `error`, or `skipped`.
+
+Metric labels use fixed value sets and never include an order ID.
+
 ## Detection vs diagnosis
 
 The LLM is not responsible for primary anomaly detection in V1.

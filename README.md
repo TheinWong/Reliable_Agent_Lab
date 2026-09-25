@@ -2,7 +2,7 @@
 
 > A production-oriented tool-using agent built with LangGraph, MCP, and FastAPI, demonstrated through reproducible microservice incident diagnosis and recovery.
 
-**Status:** repository bootstrap / early development
+**Status:** Milestone 1 - faultable Spring Boot service
 
 Reliable Agent Lab is an open-source engineering project for learning and demonstrating how tool-using agents can execute real-world tasks reliably, safely, and observably.
 
@@ -144,11 +144,24 @@ Traditional monitoring or deterministic scenario scripts are responsible for det
 
 ## Demo environment
 
-The first environment is a small Spring Boot Order Service.
+The first environment is a small Spring Boot Order Service. MySQL is the source
+of truth and Redis provides cache-aside order-detail caching. Redis failures are
+visible through health, structured logs, and bounded-label Prometheus metrics,
+while existing orders remain readable through a timeout-bounded MySQL fallback.
 
-Planned fault scenarios:
+Start the environment and run the verified Redis-unavailable scenario:
 
-1. Redis timeout / unavailable
+```bash
+docker compose -f infra/docker-compose.yml up -d --build
+./scenarios/redis-unavailable/verify.sh
+```
+
+The scenario script verifies healthy cache behavior, a real Redis outage,
+business API continuity, diagnostic evidence, and application-level recovery.
+
+Scenario status:
+
+1. Redis timeout / unavailable — implemented
 2. MySQL connection failure
 3. artificial request latency
 4. HTTP 5xx fault
@@ -197,9 +210,9 @@ Each scenario must define:
 
 ### v0.1 - Agent MVP
 
-- [ ] Spring Boot Order Service
-- [ ] MySQL and Redis integration
-- [ ] Redis fault injection
+- [x] Spring Boot Order Service
+- [x] MySQL and Redis integration
+- [x] Redis fault injection
 - [ ] LangGraph AgentState
 - [ ] evidence collection
 - [ ] structured diagnosis
