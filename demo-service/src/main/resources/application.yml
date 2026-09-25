@@ -1,0 +1,35 @@
+spring:
+  application:
+    name: reliable-agent-demo-service
+  datasource:
+    url: ${MYSQL_URL:jdbc:mysql://localhost:3306/reliable_agent_demo}
+    username: ${MYSQL_USER:demo}
+    password: ${MYSQL_PASSWORD:demo}
+    hikari:
+      connection-timeout: ${MYSQL_CONNECTION_TIMEOUT_MS:2000}
+  data:
+    redis:
+      url: ${REDIS_URL:redis://localhost:6379/0}
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:1s}
+      timeout: ${REDIS_OPERATION_TIMEOUT:1s}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+server:
+  port: 8080
+
+app:
+  cache:
+    order:
+      ttl: 5m
