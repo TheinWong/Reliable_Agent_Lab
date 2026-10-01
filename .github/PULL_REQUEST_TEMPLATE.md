@@ -1,38 +1,20 @@
 ## Summary
 
-<!-- What does this PR change? -->
-
 ## Why
 
-<!-- Why is this change needed? -->
-
-## Changes
-
-- 
+## Related Issue / ExecPlan / Milestone
 
 ## Architecture impact
 
-<!-- State graph, MCP boundary, API, persistence, reliability policy, etc. Write "None" if not applicable. -->
+## Test evidence
 
-## Testing
+## Trace / scenario evidence (if relevant)
 
-<!-- List commands and meaningful scenarios actually run. -->
+## Known limitations / follow-ups
 
-```text
-
-```
-
-## Related issue
-
-Closes #
-
-## Checklist
-
-- [ ] Acceptance criteria are satisfied
-- [ ] New behavior has appropriate tests
-- [ ] Relevant tests pass
-- [ ] Lint/type checks pass where applicable
-- [ ] Documentation is updated
-- [ ] No secrets or `.env` files are included
-- [ ] No unrelated changes are included
-- [ ] Remaining limitations are documented
+### Checklist
+- [ ] acceptance criteria met
+- [ ] relevant tests pass
+- [ ] lint/type/build checks pass
+- [ ] docs updated
+- [ ] no secrets/debug artifacts

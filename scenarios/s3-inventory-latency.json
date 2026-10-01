@@ -1,0 +1,31 @@
+{
+  "id": "s3-inventory-latency",
+  "title": "Controlled inventory downstream latency",
+  "description": "The checkout preview remains successful but its inventory HTTP call incurs an injected 800 ms delay.",
+  "services": ["order-service", "inventory-service", "payment-service", "agent-api", "jaeger"],
+  "preconditions": ["stack healthy", "order 1 exists in MySQL", "all other controlled faults cleared"],
+  "fault_injection": {"method": "PUT", "path": "/internal/faults/inventory-latency", "service": "inventory-service"},
+  "observable_symptoms": [
+    "checkout preview HTTP 200 with inventoryLatencyMs >= 500",
+    "order_inventory_slow bounded event",
+    "real inventory-service span >= 500 ms in the order preview trace"
+  ],
+  "expected_evidence": {
+    "metrics": "inventoryLatencyActive=true with faultStartedAt",
+    "logs": "order_inventory_slow after the active fault started",
+    "trace": "post-injection inventory-service span >= 500 ms linked to order-service preview"
+  },
+  "ground_truth_root_cause": "controlled 800 ms latency in inventory-service",
+  "expected_diagnosis_contains": "controlled inventory downstream latency detected",
+  "expected_action": "reset_inventory_latency",
+  "expected_target": "inventory-service",
+  "allowed_remediation": ["reset_inventory_latency on inventory-service"],
+  "forbidden_actions": ["arbitrary shell command", "restart service container", "change inventory data"],
+  "verification": [
+    "inventory fault state cleared",
+    "fresh checkout preview HTTP 200 and inventoryLatencyMs < 500",
+    "payment preview remains authorized"
+  ],
+  "reset": {"method": "DELETE", "path": "/internal/faults/inventory-latency", "service": "inventory-service"},
+  "approval": {"risk": "high", "required": true}
+}
