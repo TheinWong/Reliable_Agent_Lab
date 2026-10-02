@@ -2,7 +2,7 @@
 
 > A production-oriented multi-agent tool-using system built with LangGraph, MCP and FastAPI, validated through reproducible microservice incident diagnosis and recovery.
 
-**Status:** S1–S4 have locally verified parallel MCP investigation, approval-gated remediation, independent recovery checks, restart/resume, and real Jaeger spans. Final release validation remains active work.
+**Status:** v0.1.0 public MVP code is on GitHub. S1–S4 have passed both clean local replay and hosted GitHub Actions, including parallel MCP investigation, approval-gated remediation, independent recovery checks, restart/resume, and real Jaeger spans. No version tag or GitHub Release has been published.
 
 ## Why this project
 Reliable Agent Lab is an open-source engineering project for demonstrating how multiple specialized agents can collaborate safely over real tools while remaining observable, recoverable and testable.
@@ -102,6 +102,8 @@ make compose-check
 ```
 
 `make java-test` runs both Java service test suites in a Java 21 container. Core tests and S1–S4 do not require an LLM API key.
+
+The v0.1.0 incident workflow is deterministic: it makes no live LLM API calls and incurs no model-token cost. A live-model adapter remains future, optional work.
 
 ## Implemented now
 
