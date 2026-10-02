@@ -56,7 +56,7 @@ The top-level Codex Goal is the v0.1.0 public MVP. Build in vertical slices and 
 - [x] OpenTelemetry spans for S1–S4 agent/tool/Java reset boundaries
 - [x] Jaeger S1–S4 traces with automated query and parent-link assertions
 - [x] order-service Prometheus-format metrics endpoint and four-case evaluation; dashboards remain future work
-- [x] four automated ground-truth scenarios (locally verified; clean-start replay still pending)
+- [x] four automated ground-truth scenarios (clean local replay and hosted CI verified)
 - [x] exact four-case persisted-incident evaluation script (`make evaluate`); no statistical generalization
 
 ## Phase 8 — Open-source polish / v0.1.0
@@ -64,4 +64,5 @@ The top-level Codex Goal is the v0.1.0 public MVP. Build in vertical slices and 
 - [x] architecture flow diagram/docs aligned with S1–S4
 - [x] learning artifacts for code/graph/trace walkthrough
 - [x] security/contributing docs with local-demo scope and disclosure guidance
-- [ ] public release checklist green (hosted CI requires an authorized remote run; local Goal verification audit is in `VERIFICATION_AUDIT.md`)
+- [x] v0.1.0 MVP acceptance checklist green (clean local replay and hosted CI; evidence in `VERIFICATION_AUDIT.md`)
+- [ ] optional owner-authorized `v0.1.0` tag and GitHub Release (not part of the verified code MVP)
