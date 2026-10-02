@@ -1,0 +1,251 @@
+services:
+  jaeger:
+    image: cr.jaegertracing.io/jaegertracing/jaeger:2.21.0
+    ports:
+      - "127.0.0.1:${JAEGER_UI_PORT:-16686}:16686"
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: agentlab
+      POSTGRES_USER: agentlab
+      POSTGRES_PASSWORD: local-agentlab
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentlab -d agentlab"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: demo
+      MYSQL_USER: demo
+      MYSQL_PASSWORD: demo
+      MYSQL_ROOT_PASSWORD: local-root
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-plocal-root"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  inventory-service:
+    build:
+      context: services/downstream-service
+    environment:
+      RAL_DEMO_ROLE: inventory
+      RAL_FAULT_INJECTION_ENABLED: "true"
+      OTEL_SERVICE_NAME: inventory-service
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
+    ports:
+      - "127.0.0.1:${INVENTORY_SERVICE_PORT:-18081}:8080"
+    depends_on:
+      jaeger:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/actuator/health/readiness"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
+
+  payment-service:
+    build:
+      context: services/downstream-service
+    environment:
+      RAL_DEMO_ROLE: payment
+      RAL_FAULT_INJECTION_ENABLED: "true"
+      OTEL_SERVICE_NAME: payment-service
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
+    ports:
+      - "127.0.0.1:${PAYMENT_SERVICE_PORT:-18082}:8080"
+    depends_on:
+      jaeger:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/actuator/health/readiness"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
+
+  order-service:
+    build:
+      context: services/order-service
+    environment:
+      MYSQL_JDBC_URL: jdbc:mysql://mysql:3306/demo
+      MYSQL_USER: demo
+      MYSQL_PASSWORD: demo
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      RAL_FAULT_INJECTION_ENABLED: "true"
+      INVENTORY_SERVICE_URL: http://inventory-service:8080
+      PAYMENT_SERVICE_URL: http://payment-service:8080
+      OTEL_SERVICE_NAME: order-service
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
+    ports:
+      - "127.0.0.1:${ORDER_SERVICE_PORT:-18080}:8080"
+    depends_on:
+      jaeger:
+        condition: service_started
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      inventory-service:
+        condition: service_healthy
+      payment-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/actuator/health/readiness"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
+
+  mcp-metrics:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    command: ["python", "-m", "reliable_agent_lab.mcp_server", "metrics"]
+    environment:
+      RAL_ORDER_SERVICE_URL: http://order-service:8080
+      RAL_INVENTORY_SERVICE_URL: http://inventory-service:8080
+      RAL_PAYMENT_SERVICE_URL: http://payment-service:8080
+      RAL_TOOL_TIMEOUT_SECONDS: 5
+    depends_on:
+      order-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8000), timeout=2).close()"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  mcp-logs:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    command: ["python", "-m", "reliable_agent_lab.mcp_server", "logs"]
+    environment:
+      RAL_ORDER_SERVICE_URL: http://order-service:8080
+      RAL_TOOL_TIMEOUT_SECONDS: 5
+    depends_on:
+      order-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8000), timeout=2).close()"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  mcp-traces:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    command: ["python", "-m", "reliable_agent_lab.mcp_server", "traces"]
+    environment:
+      RAL_JAEGER_QUERY_URL: http://jaeger:16686
+      RAL_TOOL_TIMEOUT_SECONDS: 5
+    depends_on:
+      jaeger:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8000), timeout=2).close()"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  mcp-operations:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    command: ["python", "-m", "reliable_agent_lab.mcp_server", "operations"]
+    environment:
+      RAL_ORDER_SERVICE_URL: http://order-service:8080
+      RAL_TOOL_TIMEOUT_SECONDS: 5
+      RAL_DEMO_OPERATIONS_ENABLED: "true"
+    depends_on:
+      order-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8000), timeout=2).close()"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  agent-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    environment:
+      RAL_ORDER_SERVICE_URL: http://order-service:8080
+      RAL_TOOL_TIMEOUT_SECONDS: 5
+      RAL_METRICS_MCP_URL: http://mcp-metrics:8000/mcp
+      RAL_LOGS_MCP_URL: http://mcp-logs:8000/mcp
+      RAL_TRACES_MCP_URL: http://mcp-traces:8000/mcp
+      RAL_OPERATIONS_MCP_URL: http://mcp-operations:8000/mcp
+      RAL_POSTGRES_DSN: postgresql://agentlab:local-agentlab@postgres:5432/agentlab
+      LANGGRAPH_STRICT_MSGPACK: "true"
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
+    ports:
+      - "127.0.0.1:${AGENT_API_PORT:-18000}:8000"
+    depends_on:
+      jaeger:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      order-service:
+        condition: service_healthy
+      mcp-metrics:
+        condition: service_healthy
+      mcp-logs:
+        condition: service_healthy
+      mcp-traces:
+        condition: service_healthy
+      mcp-operations:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+volumes:
+  mysql-data:
+  postgres-data:

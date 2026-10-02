@@ -1,0 +1,17 @@
+server:
+  port: 8080
+
+app:
+  role: ${RAL_DEMO_ROLE:inventory}
+  fault-injection:
+    enabled: ${RAL_FAULT_INJECTION_ENABLED:false}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true

@@ -1,0 +1,41 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: order-service
+  datasource:
+    url: ${MYSQL_JDBC_URL:jdbc:mysql://localhost:3306/demo}
+    username: ${MYSQL_USER:demo}
+    password: ${MYSQL_PASSWORD:demo}
+    hikari:
+      connection-timeout: 2000
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      connect-timeout: 1s
+      timeout: 1s
+
+app:
+  inventory-url: ${INVENTORY_SERVICE_URL:http://localhost:18081}
+  payment-url: ${PAYMENT_SERVICE_URL:http://localhost:18082}
+  cache:
+    ttl: 5m
+  fault-injection:
+    enabled: ${RAL_FAULT_INJECTION_ENABLED:false}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: always

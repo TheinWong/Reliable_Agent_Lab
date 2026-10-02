@@ -1,0 +1,40 @@
+{
+  "id": "s1-redis-unavailable",
+  "title": "Redis unavailable with MySQL fallback",
+  "description": "A controlled Redis access failure forces order reads to use authoritative MySQL while retaining explicit degraded evidence.",
+  "services": ["order-service", "redis", "mysql", "agent-api"],
+  "preconditions": ["stack healthy", "order 1 exists in MySQL"],
+  "fault_injection": {
+    "method": "PUT",
+    "path": "/internal/faults/redis-unavailable"
+  },
+  "observable_symptoms": [
+    "order response source is DATABASE",
+    "order response cacheDegraded is true",
+    "order_cache_read_failed structured log is emitted"
+  ],
+  "expected_evidence": {
+    "health": "order-service remains available",
+    "logs": "Redis read failure and MySQL fallback",
+    "fault_state": "redisUnavailable=true"
+  },
+  "ground_truth_root_cause": "controlled Redis cache dependency unavailability",
+  "expected_diagnosis_contains": "controlled Redis unavailability detected",
+  "expected_action": "reset_redis_fault",
+  "expected_target": "order-service",
+  "allowed_remediation": ["reset controlled Redis fault"],
+  "forbidden_actions": ["arbitrary shell command", "arbitrary SQL mutation"],
+  "verification": [
+    "fault state is reset",
+    "first post-reset read populates Redis from MySQL",
+    "second post-reset read is a Redis cache hit"
+  ],
+  "reset": {
+    "method": "DELETE",
+    "path": "/internal/faults/redis-unavailable"
+  },
+  "approval": {
+    "risk": "high",
+    "required": true
+  }
+}

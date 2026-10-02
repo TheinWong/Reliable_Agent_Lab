@@ -1,12 +1,8 @@
-name: CI
+name: ci
 
 on:
-  pull_request:
   push:
-    branches: [main]
-
-permissions:
-  contents: read
+  pull_request:
 
 jobs:
   python:
@@ -14,64 +10,71 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Detect Python workspace
-        id: detect
-        shell: bash
-        run: |
-          if [ -f agent/pyproject.toml ] || [ -f api/pyproject.toml ] || [ -f pyproject.toml ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-          fi
-      - uses: actions/setup-python@v5
-        if: steps.detect.outputs.enabled == 'true'
+      - uses: astral-sh/setup-uv@v6
         with:
-          python-version: '3.12'
-      - name: Bootstrap note
-        if: steps.detect.outputs.enabled != 'true'
-        run: echo "Python workspace not created yet; skipping Python checks."
-      - name: Run Python checks through Makefile
-        if: steps.detect.outputs.enabled == 'true'
-        run: make test-python
+          version: "0.12.7"
+          enable-cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen
+      - run: make lint python-test
 
   java:
     name: Java checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Detect Java workspace
-        id: detect
-        shell: bash
-        run: |
-          if [ -f demo-service/pom.xml ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-          fi
       - uses: actions/setup-java@v4
-        if: steps.detect.outputs.enabled == 'true'
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: "21"
           cache: maven
-      - name: Bootstrap note
-        if: steps.detect.outputs.enabled != 'true'
-        run: echo "Java workspace not created yet; skipping Java checks."
-      - name: Test Java service
-        if: steps.detect.outputs.enabled == 'true'
-        working-directory: demo-service
-        run: mvn -B test
+          cache-dependency-path: |
+            services/order-service/pom.xml
+            services/downstream-service/pom.xml
+      - run: mvn -B -ntp verify
+        working-directory: services/order-service
+      - run: mvn -B -ntp verify
+        working-directory: services/downstream-service
 
-  compose:
+  integration:
     name: Compose validation
     runs-on: ubuntu-latest
+    needs: [python, java]
     steps:
       - uses: actions/checkout@v4
-      - name: Validate compose when present
-        shell: bash
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.7"
+          enable-cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen
+      - name: Validate Compose model
+        run: docker compose config --quiet
+      - name: Start vertical slice
+        run: docker compose up -d --build --wait --wait-timeout 300
+      - name: Smoke test
+        run: bash scripts/smoke.sh
+      - name: MCP transport and idempotency smoke
+        run: make mcp-smoke
+      - name: Redis unavailable scenario
+        run: make scenario SCENARIO=redis-unavailable
+      - name: Controlled MySQL read scenario
+        run: make scenario SCENARIO=mysql-unavailable
+      - name: Inventory latency scenario
+        run: make scenario SCENARIO=inventory-latency
+      - name: Payment HTTP 5xx scenario
+        run: make scenario SCENARIO=payment-5xx
+      - name: Evaluate latest persisted scenarios against ground truth
+        run: make evaluate
+      - name: Capture failure evidence
+        if: failure()
         run: |
-          if [ -f infra/docker-compose.yml ]; then
-            docker compose -f infra/docker-compose.yml config
-          else
-            echo "Compose file not created yet; skipping validation."
-          fi
+          docker compose ps
+          docker compose logs --no-color
+      - name: Stop stack
+        if: always()
+        run: docker compose down -v --remove-orphans

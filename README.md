@@ -1,314 +1,121 @@
 # Reliable Agent Lab
 
-> A production-oriented tool-using agent built with LangGraph, MCP, and FastAPI, demonstrated through reproducible microservice incident diagnosis and recovery.
+> A production-oriented multi-agent tool-using system built with LangGraph, MCP and FastAPI, validated through reproducible microservice incident diagnosis and recovery.
 
-**Status:** Milestone 1 - faultable Spring Boot service
+**Status:** S1–S4 have locally verified parallel MCP investigation, approval-gated remediation, independent recovery checks, restart/resume, and real Jaeger spans. Final release validation remains active work.
 
-Reliable Agent Lab is an open-source engineering project for learning and demonstrating how tool-using agents can execute real-world tasks reliably, safely, and observably.
+## Why this project
+Reliable Agent Lab is an open-source engineering project for demonstrating how multiple specialized agents can collaborate safely over real tools while remaining observable, recoverable and testable.
 
-The project intentionally does **not** focus on building another chatbot, RAG demo, or prompt-only agent. Its focus is the runtime and backend engineering behind production agent systems:
+The project focuses on:
+- multi-agent orchestration rather than chatbot UX;
+- explicit state and handoffs;
+- context/tool permission isolation;
+- MCP integrations;
+- Python agent-backend engineering;
+- Java microservice integration;
+- reliable side effects and human approval;
+- tracing and scenario-driven verification.
 
-- explicit state and workflow orchestration;
-- structured tool calling;
-- MCP-based tool integration;
-- asynchronous execution;
-- human approval for risky actions;
-- checkpoint, interrupt, and resume;
-- retry, replan, and post-action verification;
-- typed tool contracts and structured model output;
-- tracing and observability;
-- integration between a Python agent service and a Java/Spring Boot backend.
+The first domain is microservice incident handling because it provides real evidence, tools, failure modes and measurable recovery criteria. The repository is not intended to be a general SRE product.
 
-The first reproducible environment is a small fault-injectable Spring Boot Order Service backed by MySQL and Redis.
-
-## Why this project?
-
-A production agent must handle more than a successful LLM response. It must answer questions such as:
-
-- What state must survive between execution steps?
-- What happens when a tool times out?
-- Which actions may execute automatically?
-- Which actions require human approval?
-- How does a workflow resume after a process restart?
-- How do we prevent duplicated side effects?
-- How do we verify that an action actually solved the problem?
-- How can the full execution trajectory be inspected and tested?
-
-Reliable Agent Lab makes these concerns explicit in code, contracts, policies, tests, and traces.
-
-## Project boundaries
-
-### In scope
-
-- Python 3.12
-- LangGraph
-- Pydantic
-- FastAPI
-- asyncio and SSE
-- MCP Python SDK v2
-- Java 21 + Spring Boot
-- MySQL + Redis
-- Prometheus
-- OpenTelemetry + Jaeger
-- Docker + Docker Compose
-- pytest + JUnit
-- GitHub Actions
-
-### Not a V1 focus
-
-- RAG
-- long-term memory
-- multi-agent orchestration
-- fine-tuning or RLHF
-- local LLM hosting
-- Kubernetes
-- a complex frontend
-
-These can be explored later only if they serve a concrete engineering requirement.
-
-## Target architecture
+## Runtime architecture
 
 ```text
-                       Remote LLM API
-                             ^
-                             |
-                       +-----+------+
-                       | FastAPI    |
-                       | Agent API  |
-                       +-----+------+
-                             |
-                       +-----v------+
-                       | LangGraph  |
-                       | Runtime    |
-                       +-----+------+
-                             |
-                         MCP Client
-                             |
-             +---------------+---------------+
-             |               |               |
-             v               v               v
-      Observability MCP  Database MCP   Operations MCP
-             |               |               |
-             +---------------+---------------+
-                             |
-                             v
-                      Spring Boot Service
-                             |
-                    +--------+--------+
-                    |                 |
-                    v                 v
-                  MySQL             Redis
-
-Spring Boot Actuator --> Prometheus
-Agent / service traces --> OpenTelemetry --> Jaeger
-LangGraph checkpoints --> SQLite first, PostgreSQL later
+Alert / Scenario
+      |
+      v
+ FastAPI Incident API
+      |
+      v
+ Supervisor Agent
+   /    |     \
+  v     v      v
+Metrics Logs  Trace       (parallel, read-only specialists)
+  \     |      /
+   \    |     /
+    v   v    v
+ Supervisor evidence fusion
+      |
+      v
+ Remediation Agent
+      |
+   Risk Policy (all local mutations high risk)
+      |
+   Human Approval / persisted checkpoint
+      |
+   Operations MCP
+             |
+             v
+        Demo Services
+             |
+             v
+        Verifier Agent
+          /      \
+     resolved   unresolved
 ```
 
-## Agent workflow
+## Stack
+- Python 3.12, LangGraph, Pydantic
+- FastAPI, asyncio, SSE
+- MCP Python SDK
+- Java 21, Spring Boot, MySQL, Redis
+- Prometheus-format Actuator metrics, OpenTelemetry, Jaeger
+- PostgreSQL for durable workflow state where required
+- Docker Compose, GitHub Actions
 
-```text
-Incident
-   |
-   v
-Collect Evidence
-   |
-   v
-Diagnose
-   |
-   v
-Create Remediation Plan
-   |
-   v
-Risk Check
-   |
-   +--------------------+
-   |                    |
-   v                    v
-Low Risk            High Risk
-   |                    |
-   v                    v
-Execute           Human Approval
-   |                    |
-   +----------+---------+
-              |
-              v
-            Verify
-          /        \
-      Success     Failure
-         |           |
-         v           v
-        END        Replan
-```
+## Documentation map
+See [`docs/INDEX.md`](docs/INDEX.md).
+See [`CHANGELOG.md`](CHANGELOG.md) for the local v0.1.0 candidate scope and limitations.
 
-Traditional monitoring or deterministic scenario scripts are responsible for detecting abnormal conditions. The agent is responsible for investigation, diagnosis, planning, safe action execution, and verification.
+Codex should use [`AGENTS.md`](AGENTS.md) as the short repository contract and [`CODEX_GOAL.md`](CODEX_GOAL.md) as the v0.1.0 completion contract.
 
-## Demo environment
+## Locally verified quick start
 
-The first environment is a small Spring Boot Order Service. MySQL is the source
-of truth and Redis provides cache-aside order-detail caching. Redis failures are
-visible through health, structured logs, and bounded-label Prometheus metrics,
-while existing orders remain readable through a timeout-bounded MySQL fallback.
-
-Start the environment and run the verified Redis-unavailable scenario:
-
-```bash
-docker compose -f infra/docker-compose.yml up -d --build
-./scenarios/redis-unavailable/verify.sh
-```
-
-The scenario script verifies healthy cache behavior, a real Redis outage,
-business API continuity, diagnostic evidence, and application-level recovery.
-
-Scenario status:
-
-1. Redis timeout / unavailable — implemented
-2. MySQL connection failure
-3. artificial request latency
-4. HTTP 5xx fault
-5. connection pool exhaustion
-6. downstream timeout
-7. cache inconsistency
-8. bad configuration
-
-Each scenario must define:
-
-- deterministic fault injection;
-- expected external symptoms;
-- observable evidence;
-- ground-truth root cause;
-- expected remediation;
-- verification criteria.
-
-## Repository structure
-
-```text
-.
-├── agent/                  # LangGraph runtime
-├── api/                    # FastAPI service
-├── mcp-servers/            # MCP tool servers
-├── demo-service/           # Spring Boot target service
-├── scenarios/              # Reproducible fault scenarios
-├── infra/                  # Docker / Prometheus / Jaeger
-├── scripts/                # Developer and demo scripts
-├── docs/
-│   ├── PROJECT_PLAN.md
-│   ├── ARCHITECTURE.md
-│   ├── AGENT_DESIGN.md
-│   ├── MCP_DESIGN.md
-│   ├── RELIABILITY.md
-│   ├── LEARNING_ROADMAP.md
-│   └── learning/
-├── .github/
-├── AGENTS.md               # Codex repository instructions
-├── CONTRIBUTING.md
-├── SECURITY.md
-├── Makefile
-└── README.md
-```
-
-## Roadmap
-
-### v0.1 - Agent MVP
-
-- [x] Spring Boot Order Service
-- [x] MySQL and Redis integration
-- [x] Redis fault injection
-- [ ] LangGraph AgentState
-- [ ] evidence collection
-- [ ] structured diagnosis
-- [ ] remediation planning
-- [ ] human approval
-- [ ] recovery verification
-
-### v0.2 - MCP tool layer
-
-- [ ] Observability MCP server
-- [ ] Operations MCP server
-- [ ] MCP client integration
-- [ ] typed tool results
-- [ ] timeout and error contracts
-
-### v0.3 - Agent backend
-
-- [ ] FastAPI
-- [ ] asyncio evidence collection
-- [ ] SSE execution stream
-- [ ] incident API
-- [ ] approval API
-
-### v0.4 - Reliability
-
-- [ ] retry policies
-- [ ] replanning
-- [ ] checkpoint / resume
-- [ ] PostgreSQL persistence
-- [ ] idempotency
-- [ ] tool risk policy
-
-### v0.5 - Observability
-
-- [ ] OpenTelemetry
-- [ ] Prometheus
-- [ ] Jaeger
-- [ ] structured logging
-- [ ] agent execution metrics
-
-### v1.0 - Public release
-
-- [ ] 6+ reproducible scenarios
-- [ ] integration tests
-- [ ] evaluation report
-- [ ] architecture documentation
-- [ ] one-command local demo
-- [ ] stable release notes
-
-## Target developer flow
-
-The following commands describe the target developer experience. They will be enabled milestone by milestone.
+Prerequisites: Git, Docker Engine/Desktop with Compose v2, Python 3 for shell assertions, and `uv` for the scenario trace verifier and local checks. Application builds use pinned Python 3.12 and Java 21 containers.
 
 ```bash
 cp .env.example .env
 make dev-up
+make mcp-smoke
 make smoke-test
-make fault SCENARIO=redis-timeout
-make incident SCENARIO=redis-timeout
-make recover SCENARIO=redis-timeout
+make scenario SCENARIO=redis-unavailable
+make scenario SCENARIO=mysql-unavailable
+make scenario SCENARIO=inventory-latency
+make scenario SCENARIO=payment-5xx
+make evaluate
+make dev-down
 ```
 
-## Learning-first development
+The smoke test proves an order read populates Redis, a second read hits the cache, and the FastAPI/LangGraph incident workflow completes. S1 injects a controlled Redis failure and proves MySQL fallback. S2 injects a controlled MySQL read failure for an uncached order and proves the explicit HTTP 503. S3 injects an 800 ms inventory delay; S4 injects a payment-preview HTTP 503 that causes an upstream 502. All four scenarios pause after parallel diagnosis, restart the agent API, approve a typed reset plan, check independent recovery, retry approval without a second operation, and query Jaeger for real Python/Java spans. S3/S4 additionally prove the downstream failure span belongs to the order-preview trace. The scenarios print trace IDs; open Jaeger at `http://127.0.0.1:16686` while the stack is running. S2 simulates a read fault at the application boundary; it does not stop MySQL or exhaust a real connection pool. S4 makes no actual charge.
 
-This repository is also a learning project. Core agent concepts are intentionally not delegated blindly to coding agents.
+`make evaluate` reads the latest persisted incident for each machine-readable scenario fixture and reports exact pass/fail checks. It is a four-case regression summary, not a statistically general benchmark.
 
-The project owner should personally understand and be able to explain:
+## Development checks
 
-- AgentState design;
-- LangGraph topology;
-- conditional routing;
-- MCP boundaries;
-- tool schemas and risk levels;
-- retry vs replan;
-- checkpoint and resume;
-- human approval;
-- idempotency;
-- verification strategy;
-- async execution.
+```bash
+uv sync --frozen
+make lint
+make python-test
+make java-test
+make compose-check
+```
 
-Codex is configured through [`AGENTS.md`](./AGENTS.md) to act as a teacher and pair programmer for these areas.
+`make java-test` runs both Java service test suites in a Java 21 container. Core tests and S1–S4 do not require an LLM API key.
 
-## Contributing
+## Implemented now
 
-Read [`CONTRIBUTING.md`](./CONTRIBUTING.md) before making changes.
+- typed FastAPI incident create/read/SSE/approval endpoints with PostgreSQL-backed resources and events;
+- a deterministic LangGraph Supervisor with parallel Metrics, Logs, and Trace specialist nodes, typed reports, and role-scoped MCP clients;
+- four MCP servers for metrics, logs, traces, and local-demo operations; read-only specialists do not receive the mutating client;
+- a deterministic Remediation Agent, fail-closed risk policy, LangGraph approval interrupt and PostgreSQL checkpoint, constrained Operations MCP execution, and independent Verifier Agent;
+- Spring Boot order reads with MySQL as source of truth and explicit Redis cache-aside fallback;
+- local-demo-only, idempotent Redis, controlled MySQL-read, inventory-latency and payment-5xx fault injection/reset;
+- a real checkout-preview path from order-service through inventory-service and a stateless payment authorization preview;
+- Actuator/Prometheus hooks, structured fault/cache logs, OpenTelemetry/Jaeger spans, Docker Compose health checks;
+- Python and Java unit tests plus automated S1–S4 scenarios.
 
-All non-trivial changes should begin with a GitHub Issue and enter `main` through a Pull Request. Direct development on `main` is not allowed.
-
-## Security
-
-This repository is designed for local development and controlled experimentation. Do not point mutating tools at production infrastructure.
-
-Never commit API keys, passwords, private certificates, tokens, or `.env` files.
-
-See [`SECURITY.md`](./SECURITY.md).
+The Trace MCP server reads bounded recent order and checkout-preview traces from Jaeger and distinguishes empty results from backend failure. S1–S4 resets are idempotent and approval-gated in this local demo, with a PostgreSQL action-result ledger; there is no production authentication or general exactly-once guarantee across arbitrary external effects. Replan after failed verification and full trace continuity for every read-only tool remain out of scope. See [`docs/50-roadmap/ROADMAP.md`](docs/50-roadmap/ROADMAP.md).
 
 ## License
-
-MIT
+MIT.

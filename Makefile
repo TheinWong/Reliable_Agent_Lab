@@ -1,62 +1,53 @@
-.PHONY: help lint test test-python test-java dev-up dev-down smoke-test
+.PHONY: help sync lint test python-test java-test compose-check dev-up dev-down smoke-test mcp-smoke scenario evaluate
+
+SCENARIO ?= redis-unavailable
 
 help:
-	@echo "Reliable Agent Lab"
-	@echo ""
-	@echo "Targets become active as milestones create their workspaces:"
-	@echo "  make lint"
-	@echo "  make test"
-	@echo "  make test-python"
-	@echo "  make test-java"
-	@echo "  make dev-up"
-	@echo "  make dev-down"
-	@echo "  make smoke-test"
+	@echo "sync            Resolve the locked Python development environment"
+	@echo "lint            Run Python format, lint and strict type checks"
+	@echo "test            Run Python and Java unit tests"
+	@echo "compose-check   Validate the Compose model"
+	@echo "dev-up          Build and start the first vertical slice"
+	@echo "dev-down        Stop the local stack"
+	@echo "smoke-test      Verify healthy order and incident paths"
+	@echo "mcp-smoke       Verify four MCP servers and duplicate-safe reset"
+	@echo "scenario        Run SCENARIO=redis-unavailable, mysql-unavailable, inventory-latency, or payment-5xx"
+	@echo "evaluate        Check latest persisted S1-S4 incidents against ground-truth fixtures"
+
+sync:
+	uv sync --frozen
 
 lint:
-	@if [ -f pyproject.toml ] || [ -f agent/pyproject.toml ] || [ -f api/pyproject.toml ]; then \
-		ruff check . && ruff format --check .; \
-	else \
-		echo "Python workspace not created yet."; \
-	fi
+	uv run ruff format --check .
+	uv run ruff check .
+	uv run mypy src
 
-test: test-python test-java
+python-test:
+	uv run pytest
 
-test-python:
-	@if [ -f pyproject.toml ]; then \
-		pytest; \
-	elif [ -f agent/pyproject.toml ] || [ -f api/pyproject.toml ]; then \
-		echo "Python workspace exists. Add the agreed monorepo test command before relying on this target."; \
-		exit 1; \
-	else \
-		echo "Python workspace not created yet."; \
-	fi
+java-test:
+	docker run --rm -v reliable-agent-lab-maven-cache:/root/.m2 -v "$(CURDIR)/services/order-service:/workspace" -w /workspace maven:3.9.11-eclipse-temurin-21 mvn -B -ntp verify
+	docker run --rm -v reliable-agent-lab-maven-cache:/root/.m2 -v "$(CURDIR)/services/downstream-service:/workspace" -w /workspace maven:3.9.11-eclipse-temurin-21 mvn -B -ntp verify
 
-test-java:
-	@if [ -f demo-service/pom.xml ]; then \
-		cd demo-service && mvn test; \
-	else \
-		echo "Java workspace not created yet."; \
-	fi
+test: python-test java-test
+
+compose-check:
+	docker compose config --quiet
 
 dev-up:
-	@if [ -f infra/docker-compose.yml ]; then \
-		docker compose -f infra/docker-compose.yml up -d; \
-	else \
-		echo "infra/docker-compose.yml not created yet."; \
-		exit 1; \
-	fi
+	docker compose up -d --build --wait --wait-timeout 240
 
 dev-down:
-	@if [ -f infra/docker-compose.yml ]; then \
-		docker compose -f infra/docker-compose.yml down; \
-	else \
-		echo "infra/docker-compose.yml not created yet."; \
-	fi
+	docker compose down --remove-orphans
 
 smoke-test:
-	@if [ -x scripts/smoke-test.sh ]; then \
-		scripts/smoke-test.sh; \
-	else \
-		echo "scripts/smoke-test.sh not created yet."; \
-		exit 1; \
-	fi
+	bash scripts/smoke.sh
+
+mcp-smoke:
+	docker compose exec -T agent-api python -m reliable_agent_lab.mcp_smoke
+
+scenario:
+	@case "$(SCENARIO)" in redis-unavailable|mysql-unavailable) bash scripts/scenarios/$(SCENARIO).sh ;; inventory-latency|payment-5xx) bash scripts/scenarios/downstream-fault.sh $(SCENARIO) ;; *) echo "unsupported SCENARIO=$(SCENARIO)" >&2; exit 2 ;; esac
+
+evaluate:
+	uv run python scripts/evaluate_scenarios.py

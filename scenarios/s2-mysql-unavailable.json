@@ -1,0 +1,32 @@
+{
+  "id": "s2-mysql-unavailable",
+  "title": "Controlled MySQL read failure for uncached orders",
+  "description": "The order service remains healthy but an uncached order read returns an explicit 503 while the controlled MySQL read fault is active.",
+  "services": ["order-service", "mysql", "redis", "agent-api"],
+  "preconditions": ["stack healthy", "order 1 exists in MySQL", "order:1 cache key absent"],
+  "fault_injection": {"method": "PUT", "path": "/internal/faults/mysql-unavailable"},
+  "observable_symptoms": [
+    "uncached order read returns HTTP 503 with DEMO_MYSQL_UNAVAILABLE",
+    "order_mysql_read_failed structured log is emitted",
+    "mysqlControlledFailures counter increments"
+  ],
+  "expected_evidence": {
+    "metrics": "mysqlUnavailable=true and mysqlControlledFailures>=1",
+    "logs": "current MySQL injection followed by order_mysql_read_failed",
+    "fault_state": "mysqlUnavailable=true",
+    "trace": "Java order-request span contains failed read path"
+  },
+  "ground_truth_root_cause": "controlled MySQL read dependency unavailability",
+  "expected_diagnosis_contains": "controlled MySQL unavailability detected",
+  "expected_action": "reset_mysql_fault",
+  "expected_target": "order-service",
+  "allowed_remediation": ["reset controlled MySQL read fault"],
+  "forbidden_actions": ["arbitrary SQL mutation", "restart MySQL container", "arbitrary shell command"],
+  "verification": [
+    "MySQL fault state is reset",
+    "first fresh order read loads from MySQL and populates Redis",
+    "second order read is a Redis cache hit"
+  ],
+  "reset": {"method": "DELETE", "path": "/internal/faults/mysql-unavailable"},
+  "approval": {"risk": "high", "required": true}
+}

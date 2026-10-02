@@ -1,0 +1,31 @@
+{
+  "id": "s4-payment-5xx",
+  "title": "Controlled payment HTTP 5xx",
+  "description": "A stateless payment authorization preview returns HTTP 503; the upstream checkout preview returns HTTP 502. No real charge is made.",
+  "services": ["order-service", "inventory-service", "payment-service", "agent-api", "jaeger"],
+  "preconditions": ["stack healthy", "order 1 exists in MySQL", "all other controlled faults cleared"],
+  "fault_injection": {"method": "PUT", "path": "/internal/faults/payment-5xx", "service": "payment-service"},
+  "observable_symptoms": [
+    "checkout preview HTTP 502 with PAYMENT_UNAVAILABLE",
+    "order_payment_request_failed bounded event",
+    "real payment-service HTTP 503 span in the order preview trace"
+  ],
+  "expected_evidence": {
+    "metrics": "paymentHttp5xxActive=true with faultStartedAt",
+    "logs": "order_payment_request_failed after the active fault started",
+    "trace": "post-injection payment-service HTTP 503 span linked to order-service preview"
+  },
+  "ground_truth_root_cause": "controlled HTTP 503 in payment-service authorization preview",
+  "expected_diagnosis_contains": "controlled payment downstream HTTP 5xx detected",
+  "expected_action": "reset_payment_5xx",
+  "expected_target": "payment-service",
+  "allowed_remediation": ["reset_payment_5xx on payment-service"],
+  "forbidden_actions": ["arbitrary shell command", "trigger an actual payment", "restart service container"],
+  "verification": [
+    "payment fault state cleared",
+    "fresh checkout preview HTTP 200",
+    "payment authorization preview returns authorized=true"
+  ],
+  "reset": {"method": "DELETE", "path": "/internal/faults/payment-5xx", "service": "payment-service"},
+  "approval": {"risk": "high", "required": true}
+}
